@@ -1,15 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO.Ports;
 using System.Text;
 using System.Threading;
 
 namespace GSMModemCommunicator
     {
-    public class GSMTerminalAgent
+    public class GsmCommunicator
         {
-        private SerialPort serialPort;
-
+        private int serialPortNumber;
+        private string pinCode;
         private string getPDU(string recepientNumber, string message)
             {
             string mess = cp1251ToUcs2(message);
@@ -36,7 +37,7 @@ namespace GSMModemCommunicator
             return ret.ToString();
             }
 
-        private Message getMessage(string pdu)
+        private RecievedMessage getMessage(string pdu)
             {
             // http://dreamfabric.com/sms/
             int indexNextRead = 0;
@@ -91,7 +92,10 @@ namespace GSMModemCommunicator
             indexNextRead = indexNextRead + 1;
             // read message PDU
             string message = pdu.Substring(indexNextRead * 2);
-            return new Message(number.ToString().Substring(0, numberLenght), ucs2ToCp1251(message, codingFormat, userDataLenght)) { Date = messageDate };
+
+            var resultNumber = number.ToString().Substring(0, numberLenght);
+            var resultMessage = ucs2ToCp1251(message, codingFormat, userDataLenght);
+            return new RecievedMessage(resultNumber, resultMessage, messageDate);
             }
 
         private string cp1251ToUcs2(string str)
@@ -166,7 +170,7 @@ namespace GSMModemCommunicator
             return true;
             }
 
-        private bool deleteAllExceptUnreaded()
+        private bool deleteAllMessagesExceptUnreaded()
             {
             List<int> messagesList = getMessages(MessageStatus.Read);
             foreach (int index in messagesList)
@@ -176,6 +180,8 @@ namespace GSMModemCommunicator
                     return false;
                     }
                 }
+            if (!string.IsNullOrEmpty(this.ErrorMessage)) return false;
+
             messagesList = getMessages(MessageStatus.Sent);
             foreach (int index in messagesList)
                 {
@@ -205,36 +211,37 @@ namespace GSMModemCommunicator
         private string sendCommandAndReceiveAnswer(string command, params object[] parameters)
             {
             string result = "";
+            var stopWatch = new Stopwatch();
             try
                 {
-                bool isPortOpened = serialPort.IsOpen;
-                if (!isPortOpened)
+                using (var serialPort = createSerialPort())
                     {
-                    serialPort.Open();
-                    }
-                StringBuilder query = new StringBuilder(String.Format("AT{0}", command));
-                if (parameters.Length > 0)
-                    {
-                    query.AppendFormat("={0}", parameters[0]);
-                    for (int i = 1; i < parameters.Length; i++)
+                    StringBuilder query = new StringBuilder(String.Format("AT{0}", command));
+                    if (parameters.Length > 0)
                         {
-                        query.AppendFormat(",{0}", parameters[i]);
+                        query.AppendFormat("={0}", parameters[0]);
+                        for (int i = 1; i < parameters.Length; i++)
+                            {
+                            query.AppendFormat(",{0}", parameters[i]);
+                            }
                         }
-                    }
-                query.Append("\r");
-                serialPort.Write(query.ToString());
+                    query.Append("\r");
+                    serialPort.Write(query.ToString());
 
-                while (result == "" || (result.IndexOf("OK") == -1 && result.IndexOf("ERROR") == -1 && result.IndexOf(">") == -1))
-                    {
-                    Thread.Sleep(100);
-                    //char[] buff = new char[ ComPort.BytesToRead ];
-                    //ComPort.Read(buff, 0, buff.Length);
-                    //result += buff.ArrayToString();
-                    result += serialPort.ReadExisting();
-                    }
-                if (!isPortOpened)
-                    {
-                    serialPort.Close();
+                    stopWatch.Start();
+
+                    while (result == "" ||
+                           (result.IndexOf("OK") == -1 && result.IndexOf("ERROR") == -1 && result.IndexOf(">") == -1))
+                        {
+                        Thread.Sleep(100);
+                        result += serialPort.ReadExisting();
+
+                        if (result.Length == 0 && stopWatch.Elapsed.TotalSeconds > 20)
+                            {
+                            ErrorMessage = "Timeout is exceeded";
+                            return "error";
+                            }
+                        }
                     }
                 }
             catch (Exception exp)
@@ -249,20 +256,15 @@ namespace GSMModemCommunicator
             string result = null;
             try
                 {
-                bool isPortOpened = serialPort.IsOpen;
-                if (!isPortOpened)
+                using (var serialPort = createSerialPort())
                     {
-                    serialPort.Open();
-                    }
-                serialPort.Write(String.Format("{0}{1}\r", message, (char)26));
-                while (result == null || result == "" || (result.IndexOf("OK") == -1 && result.IndexOf("ERROR") == -1))
-                    {
-                    Thread.Sleep(100);
-                    result += serialPort.ReadExisting();
-                    }
-                if (!isPortOpened)
-                    {
-                    serialPort.Close();
+                    serialPort.Write(String.Format("{0}{1}\r", message, (char)26));
+                    while (result == null || result == "" ||
+                           (result.IndexOf("OK") == -1 && result.IndexOf("ERROR") == -1))
+                        {
+                        Thread.Sleep(100);
+                        result += serialPort.ReadExisting();
+                        }
                     }
                 }
             catch (Exception exp)
@@ -312,7 +314,22 @@ namespace GSMModemCommunicator
             return result;
             }
 
+        private SerialPort createSerialPort()
+            {
+            var serialPort = new SerialPort("COM" + serialPortNumber)
+                {
+                    BaudRate = 9600,
+                    DataBits = 8,
+                    Parity = Parity.None,
+                    StopBits = StopBits.One,
+                    ReadTimeout = 300,
+                    Handshake = Handshake.None
+                };
 
+            serialPort.Open();
+
+            return serialPort;
+            }
 
         public string ErrorMessage
             {
@@ -320,30 +337,28 @@ namespace GSMModemCommunicator
             private set;
             }
 
-        public GSMTerminalAgent()
+        public GsmCommunicator(int serialPortNumber, string pinCode)
             {
-            serialPort = new SerialPort(String.Format("COM{0}", 00000000001));
-            serialPort.BaudRate = 9600; // Bits per second
-            serialPort.DataBits = 8;
-            serialPort.Parity = Parity.None;
-            serialPort.StopBits = StopBits.One;
+            this.serialPortNumber = serialPortNumber;
+            this.pinCode = pinCode;
 
-            serialPort.ReadTimeout = 300;
-
-            serialPort.Handshake = Handshake.None;
-            deleteAllExceptUnreaded();
+            deleteAllMessagesExceptUnreaded();
             }
 
         public bool Autorize()
             {
-            string answer = sendCommandAndReceiveAnswer("+CPIN?");
-            if (isError(answer))
+            if (string.IsNullOrEmpty(pinCode) || pinCode.Length != 4)
                 {
+                ErrorMessage = "Pin is wrong!";
                 return false;
                 }
+
+            string answer = sendCommandAndReceiveAnswer("+CPIN?");
+            if (isError(answer)) return false;
+
             if (answer.ToLower().IndexOf("ready") == -1 && answer.ToLower().IndexOf("ok") == -1 || answer.ToLower().IndexOf("sim pin") != -1)
                 {
-                answer = sendCommandAndReceiveAnswer("+CPIN", "0000"); //Settings.Default.PinCode);
+                answer = sendCommandAndReceiveAnswer("+CPIN", pinCode);
                 if (isError(answer))
                     {
                     return false;
@@ -357,58 +372,57 @@ namespace GSMModemCommunicator
             return true;
             }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="recepientNumber">phone number, like "380CcAaaBbCc"</param>
+        /// <param name="message">message, max length is 70 chars</param>
+        /// <returns></returns>
         public bool SendSMS(string recepientNumber, string message)
             {
-            bool result;
+            ErrorMessage = "";
+            if (string.IsNullOrEmpty(message) || message.Length > 70)
+                {
+                ErrorMessage = "Error: Длина сообщения 0 или больше 70 символов! Отправка не возможна!";
+                return false;
+                }
+
             try
                 {
-                if (message.Length > 70)
+                if (Autorize())
                     {
-                    ErrorMessage = "Error: Длина сообщения больше 70 символов! Отправка не возможна!";
-                    }
-                else
-                    {
-                    if (Autorize())
-                        {
-                        string mess = getPDU(recepientNumber, message);
-                        string len = (mess.Length / 2 - 1).ToString();
+                    string mess = getPDU(recepientNumber, message);
+                    string len = (mess.Length / 2 - 1).ToString();
 
-                        string answer = sendCommandAndReceiveAnswer("+cmgs", len);
-                        if (!isError(answer))
-                            {
-                            result = writeMessage(mess);
-                            return result;
-                            }
+                    string answer = sendCommandAndReceiveAnswer("+cmgs", len);
+                    if (!isError(answer))
+                        {
+                        return writeMessage(mess);
                         }
                     }
                 return false;
                 }
             catch (Exception exp)
                 {
-                if (serialPort.IsOpen)
-                    {
-                    serialPort.Close();
-                    }
                 ErrorMessage = "Error: " + exp.Message;
                 return false;
                 }
             }
 
-        public Message GetSMS()
+        public RecievedMessage GetSMS()
             {
-            Message result = null;
             List<int> messages = getMessages(MessageStatus.Unread);
             if (messages.Count > 0)
                 {
                 string answer = sendCommandAndReceiveAnswer("+cmgr", messages[0]);
                 if (isError(answer))
                     {
-                    return result;
+                    return null;
                     }
                 string pdu = answer.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries)[2];
-                result = getMessage(pdu);
+                return getMessage(pdu);
                 }
-            return result;
+            return null;
             }
         }
     }

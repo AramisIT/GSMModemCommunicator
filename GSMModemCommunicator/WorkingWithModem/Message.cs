@@ -2,22 +2,27 @@
 
 namespace GSMModemCommunicator
     {
-    [Serializable]
     public class Message
         {
-        public DateTime Date { get; set; }
+        public string Number { get; private set; }
 
-        public string Number { get; set; }
+        public string MessageBody { get; private set; }
 
-        public string MessageBody { get; set; }
-
-        public long TaskId { get; set; }
-
-        public Message(string number, string messageBody, long taskId = 0)
+        public Message(string number, string messageBody)
             {
             Number = number;
             MessageBody = messageBody;
-            this.TaskId = taskId;
+            }
+        }
+
+    public class RecievedMessage : Message
+        {
+        public DateTime Date { get; private set; }
+
+        public RecievedMessage(string number, string messageBody, DateTime date)
+            : base(number, messageBody)
+            {
+            Date = date;
             }
         }
     }
