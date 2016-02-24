@@ -23,6 +23,7 @@ namespace GSMModemCommunicator
             }
 
         private Stopwatch can_tGetNewTaskErrorDuration = new Stopwatch();
+        private Stopwatch can_tSendMessageErrorDuration = new Stopwatch();
 
         private const int MAX_SILENCE_TIME_IF_ERROR_MINUTES = 15;
 
@@ -37,6 +38,7 @@ namespace GSMModemCommunicator
                 }
 
             can_tGetNewTaskErrorDuration.Start();
+            can_tSendMessageErrorDuration.Start();
 
             while (true)
                 {
@@ -51,12 +53,21 @@ namespace GSMModemCommunicator
                     if (success)
                         {
                         can_tGetNewTaskErrorDuration.Restart();
+                        can_tSendMessageErrorDuration.Restart();
                         continue;
                         }
-                    if (!string.IsNullOrEmpty(gsmCommunicator.ErrorMessage))
+                    else if (!string.IsNullOrEmpty(gsmCommunicator.ErrorMessage))
                         {
-                        showMessage(string.Format(@"Ошибка отправки сообщения: {0}", gsmCommunicator.ErrorMessage));
+                        if (can_tSendMessageErrorDuration.Elapsed.TotalMinutes > MAX_SILENCE_TIME_IF_ERROR_MINUTES)
+                            {
+                            can_tSendMessageErrorDuration.Restart();
+                            showMessage(string.Format(@"Ошибка отправки сообщения: {0}", gsmCommunicator.ErrorMessage));
+                            }
                         }
+                    }
+                else
+                    {
+                    can_tSendMessageErrorDuration.Restart();
                     }
 
                 if (!errorOccurred)
