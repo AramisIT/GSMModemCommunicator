@@ -36,6 +36,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -63,7 +64,7 @@
     <Compile Include="SettingsInitializator.cs" />
     <Compile Include="WorkingWithModem\GsmCommunicator.cs" />
     <Compile Include="WorkingWithModem\Message.cs" />
-    <Compile Include="Infostructure\Program.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Infostructure\TextMessagesSenderApplicationContext.cs" />
     <Compile Include="Infostructure\TrayMenu.cs" />
@@ -81,6 +82,7 @@
       <DependentUpon>Resources.resx</DependentUpon>
       <DesignTime>True</DesignTime>
     </Compile>
+    <None Include="App.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
