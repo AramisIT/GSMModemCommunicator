@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -20,34 +21,34 @@ namespace GSMModemCommunicator
 
         internal bool CheckNecessarySettings()
             {
-            if (!WindowsRegistryHelper.Instance.IsInitiated())
-                {
-                if (!showHelpMaterials()) return false;
+//            if (!WindowsRegistryHelper.Instance.IsInitiated())
+//                {
+//                if (!showHelpMaterials()) return false;
 
-                Guid modemId;
-                string url;
-                if (!getNewModemSettingsFromClipboard(out modemId, out url))
-                    {
-                    UserNotificator.Instance.ShowWarning(@"Истекло время ожидания регистрации нового модема. Программа будет закрыта!");
-                    return false;
-                    }
+//                Guid modemId;
+//                string url;
+//                if (!getNewModemSettingsFromClipboard(out modemId, out url))
+//                    {
+//                    UserNotificator.Instance.ShowWarning(@"Истекло время ожидания регистрации нового модема. Программа будет закрыта!");
+//                    return false;
+//                    }
 
-                if (!saveNewModemSettings(url, modemId))
-                    {
-                    UserNotificator.Instance.ShowWarning(@"Не удается зарегистрировать новый модем.
-Обратитесь к системному администратору!");
-                    return false;
-                    }
+//                if (!saveNewModemSettings(url, modemId))
+//                    {
+//                    UserNotificator.Instance.ShowWarning(@"Не удается зарегистрировать новый модем.
+//Обратитесь к системному администратору!");
+//                    return false;
+//                    }
 
-                if (!WindowsRegistryHelper.Instance.SetUrl(url, modemId))
-                    {
-                    UserNotificator.Instance.ShowWarning(@"Не удается сохранить настройки модема в системном реестре.
-Обратитесь к системному администратору!");
-                    return false;
-                    }
-                }
+//                if (!WindowsRegistryHelper.Instance.SetUrl(url, modemId))
+//                    {
+//                    UserNotificator.Instance.ShowWarning(@"Не удается сохранить настройки модема в системном реестре.
+//Обратитесь к системному администратору!");
+//                    return false;
+//                    }
+//                }
 
-            if (!readSettings())
+            if (!readSettingsFromAppConfig() && !readSettings())
                 {
                 UserNotificator.Instance.ShowErrorWithRemoveSettingsOption(@"Не удается подключиться к системе!"); ;
                 return false;
@@ -55,6 +56,35 @@ namespace GSMModemCommunicator
 
             return true;
             }
+        private bool readSettingsFromAppConfig()
+        {
+            long modemIdInt64;
+            if (!long.TryParse(ConfigurationManager.AppSettings["ModemId"], out modemIdInt64)) return false;
+
+            string url = ConfigurationManager.AppSettings["WebApplicationUrl"];
+            if (string.IsNullOrEmpty(url)) return false;
+
+            string simCardPinCode = ConfigurationManager.AppSettings["SimCardPinCode"];
+            if (string.IsNullOrEmpty(simCardPinCode)) return false;
+
+            int portNumber;
+            if (!Int32.TryParse(ConfigurationManager.AppSettings["ModemSerialPortNumber"], out portNumber)) return false;
+
+            foreach (var _char in simCardPinCode)
+            {
+                if (!char.IsDigit(_char)) return false;
+            }
+
+            Settings = new MessagesSendingSettings()
+            {
+                ModemId = modemIdInt64,
+                ModemSerialPortNumber = portNumber,
+                SimCardPinCode = simCardPinCode,
+                WebApplicationUrl = url,
+            };
+
+            return true;
+        }
 
         private bool readSettings()
             {
